@@ -1,0 +1,11 @@
+{
+  "name": "creova-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "cmd /c \"cd server && npm install\" && cmd /c \"cd client && npm install\"",
+    "server": "cmd /c \"cd server && npm run dev\"",
+    "client": "cmd /c \"cd client && npm run dev\"",
+    "start": "node server/src/server.js"
+  }
+}
