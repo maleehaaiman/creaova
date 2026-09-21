@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { testConnection } = require('./db');
+const { ensurePaymentSchema } = require('./services/payment/schema');
 
 dotenv.config();
 
@@ -14,7 +15,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buffer) => {
+    req.rawBody = buffer;
+  }
+}));
 
 // Routes
 const authRoutes = require('./routes/auth.routes');
@@ -28,6 +33,7 @@ const notificationRoutes = require('./routes/notification.routes');
 const paymentRoutes = require('./routes/payment.routes');
 const socialRoutes = require('./routes/social.routes');
 const metaRoutes = require('./routes/meta.routes');
+const affiliateRoutes = require('./routes/affiliate.routes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/creators', creatorRoutes);
@@ -40,6 +46,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/social-accounts', socialRoutes);
 app.use('/api/meta', metaRoutes);
+app.use('/api/affiliates', affiliateRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -54,5 +61,6 @@ app.get('/api/health', (req, res) => {
 // Start Server
 app.listen(PORT, async () => {
   console.log(` Creova Backend running on port ${PORT}`);
+  await ensurePaymentSchema();
   await testConnection();
 });

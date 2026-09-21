@@ -141,7 +141,10 @@ async function getCurrentUser(req, res) {
 
     if (user.role === 'creator') {
       const [creatorRows] = await pool.execute(
-        'SELECT id, bio, niche, profile_image, instagram, youtube, tiktok FROM creator_profiles WHERE user_id = ?',
+        `SELECT id, bio, niche, profile_image, instagram, youtube, tiktok,
+          payout_method, payout_account_name, payout_bank_name, payout_account_last4,
+          payout_ifsc, payout_upi_id, payout_email, payout_updated_at
+         FROM creator_profiles WHERE user_id = ?`,
         [userId]
       );
       if (creatorRows.length > 0) profile = creatorRows[0];
@@ -230,9 +233,43 @@ async function updateCurrentUser(req, res) {
   }
 }
 
+async function deleteCurrentUser(req, res) {
+  try {
+    const userId = req.user.id;
+
+    const [creatorRows] = await pool.execute('SELECT id FROM creator_profiles WHERE user_id = ?', [userId]);
+    const [brandRows] = await pool.execute('SELECT id FROM brand_profiles WHERE user_id = ?', [userId]);
+    const creatorId = creatorRows[0]?.id || null;
+    const brandId = brandRows[0]?.id || null;
+
+    await pool.execute('DELETE FROM notifications WHERE user_id = ?', [userId]);
+    await pool.execute('DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?', [userId, userId]);
+    await pool.execute('DELETE FROM creator_profile_views WHERE creator_user_id = ? OR viewer_user_id = ?', [userId, userId]);
+
+    if (creatorId) {
+      await pool.execute('DELETE FROM campaign_applications WHERE creator_id = ?', [creatorId]);
+      await pool.execute('DELETE FROM collaborations WHERE creator_id = ?', [creatorId]);
+    }
+
+    if (brandId) {
+      await pool.execute('DELETE FROM campaigns WHERE brand_id = ?', [brandId]);
+    }
+
+    await pool.execute('DELETE FROM creator_profiles WHERE user_id = ?', [userId]);
+    await pool.execute('DELETE FROM brand_profiles WHERE user_id = ?', [userId]);
+    await pool.execute('DELETE FROM users WHERE id = ?', [userId]);
+
+    return res.json({ message: 'Account deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting current user:', error);
+    return res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+}
+
 module.exports = {
   register,
   login,
   getCurrentUser,
-  updateCurrentUser
+  updateCurrentUser,
+  deleteCurrentUser
 };

@@ -1,0 +1,3 @@
+ALTER TABLE affiliate_products
+  ADD COLUMN IF NOT EXISTS description TEXT NULL,
+  ADD COLUMN IF NOT EXISTS category VARCHAR(120) NULL;

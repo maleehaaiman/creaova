@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sparkles, User, Mail, Lock, Shield } from 'lucide-react';
+import { ArrowLeft, Sparkles, User, Mail, Lock, Shield } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
@@ -53,7 +53,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
             cursor: 'pointer'
           }}
         >
-          <X size={20} />
+          <ArrowLeft size={20} />
         </button>
 
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>

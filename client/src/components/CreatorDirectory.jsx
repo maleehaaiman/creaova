@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Video, ExternalLink, UserCheck, RefreshCw } from 'lucide-react';
+import { Briefcase, Search, Video, ExternalLink, UserCheck, RefreshCw, MessageCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 const InstagramIcon = ({ size = 16 }) => (
@@ -19,21 +19,27 @@ const YoutubeIcon = ({ size = 16 }) => (
 
 const NICHES = ['All Niches', 'Tech & AI', 'Fashion & Style', 'Lifestyle', 'Gaming', 'Fitness & Health', 'Beauty'];
 
-export default function CreatorDirectory({ onSelectCreator }) {
+export default function CreatorDirectory({ onSelectCreator, onMessageCreator, onSelectBrand, onMessageBrand }) {
   const [creators, setCreators] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [directoryType, setDirectoryType] = useState('creators');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedNiche, setSelectedNiche] = useState('All Niches');
 
-  const fetchCreators = async () => {
+  const fetchDirectory = async () => {
     setLoading(true);
     try {
-      const params = {};
-      if (search) params.search = search;
-      if (selectedNiche !== 'All Niches') params.niche = selectedNiche;
-
-      const data = await api.getCreators(params);
-      setCreators(data.creators || []);
+      if (directoryType === 'brands') {
+        const data = await api.getBrands();
+        setBrands(data.brands || []);
+      } else {
+        const params = {};
+        if (search) params.search = search;
+        if (selectedNiche !== 'All Niches') params.niche = selectedNiche;
+        const data = await api.getCreators(params);
+        setCreators(data.creators || []);
+      }
     } catch (err) {
       console.error('Error fetching creators:', err);
     } finally {
@@ -42,8 +48,17 @@ export default function CreatorDirectory({ onSelectCreator }) {
   };
 
   useEffect(() => {
-    fetchCreators();
-  }, [search, selectedNiche]);
+    fetchDirectory();
+  }, [directoryType, search, selectedNiche]);
+
+  const filteredCreators = creators.filter((creator) => {
+    const query = search.trim().toLowerCase();
+    return !query || [creator.name, creator.bio, creator.niche].some((value) => (value || '').toLowerCase().includes(query));
+  });
+  const filteredBrands = brands.filter((brand) => {
+    const query = search.trim().toLowerCase();
+    return !query || [brand.company_name, brand.description, brand.email].some((value) => (value || '').toLowerCase().includes(query));
+  });
 
   return (
     <section className="content-section directory-section" style={{ maxWidth: '1280px', margin: '0 auto', padding: '20px 24px 60px' }}>
@@ -51,10 +66,10 @@ export default function CreatorDirectory({ onSelectCreator }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '20px', marginBottom: '32px' }}>
         <div>
           <h2 style={{ fontSize: '2rem', fontWeight: 800 }}>
-            Creator <span className="text-gradient">Directory</span>
+            {directoryType === 'creators' ? 'Creator' : 'Brand'} <span className="text-gradient">Directory</span>
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '4px' }}>
-            Discover top content creators across top niches
+            {directoryType === 'creators' ? 'Discover creators across top niches' : 'Discover brands and their partnership offers'}
           </p>
         </div>
 
@@ -66,21 +81,26 @@ export default function CreatorDirectory({ onSelectCreator }) {
               type="text"
               className="input-field"
               style={{ paddingLeft: '42px' }}
-              placeholder="Search by creator name, bio or niche..."
+              placeholder={directoryType === 'creators' ? 'Search creators by name, bio or niche...' : 'Search brands by name or description...'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
           {/* Refresh Button */}
-          <button onClick={fetchCreators} className="btn-secondary" title="Refresh list">
+          <button onClick={fetchDirectory} className="btn-secondary" title="Refresh list">
             <RefreshCw size={18} className={loading ? 'spin' : ''} />
           </button>
         </div>
       </div>
 
+      <div className="directory-switcher" role="tablist" aria-label="Directory type">
+        <button type="button" className={directoryType === 'creators' ? 'is-active' : ''} onClick={() => { setDirectoryType('creators'); setSearch(''); }}>Creators</button>
+        <button type="button" className={directoryType === 'brands' ? 'is-active' : ''} onClick={() => { setDirectoryType('brands'); setSearch(''); setSelectedNiche('All Niches'); }}>Brands</button>
+      </div>
+
       {/* Niche Filter Pills */}
-      <div className="filter-pills" style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '16px', marginBottom: '28px' }}>
+      {directoryType === 'creators' && <div className="filter-pills" style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '16px', marginBottom: '28px' }}>
         {NICHES.map((niche) => (
           <button
             key={niche}
@@ -101,7 +121,7 @@ export default function CreatorDirectory({ onSelectCreator }) {
             {niche}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* Creators Grid */}
       {loading ? (
@@ -109,7 +129,9 @@ export default function CreatorDirectory({ onSelectCreator }) {
           <RefreshCw size={32} className="spin" style={{ marginBottom: '12px', color: '#818cf8' }} />
           <div>Loading creators...</div>
         </div>
-      ) : creators.length === 0 ? (
+      ) : directoryType === 'brands' ? (
+        filteredBrands.length === 0 ? <div className="glass-panel" style={{ textAlign: 'center', padding: '60px 20px' }}><Briefcase size={48} color="var(--text-dim)" style={{ marginBottom: '12px' }} /><h3 style={{ fontSize: '1.2rem', fontWeight: 600 }}>No brands found</h3><p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '6px' }}>No brands match your search.</p></div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>{filteredBrands.map((brand) => <div key={brand.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}><div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}><img src={brand.logo || `https://api.dicebear.com/7.x/initials/svg?seed=${brand.company_name || 'Brand'}`} alt={brand.company_name} style={{ width: '60px', height: '60px', borderRadius: '16px', objectFit: 'cover', background: '#1a1a1a' }} /><div><h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{brand.company_name || 'Brand'}</h3><span className="badge-brand">Brand</span></div></div><p style={{ color: 'var(--text-muted)', lineHeight: '1.5' }}>{brand.description || 'No brand description yet.'}</p><div style={{ display: 'flex', gap: '10px' }}><button type="button" className="btn-secondary" onClick={() => onSelectBrand && onSelectBrand({ ...brand, name: brand.company_name || 'Brand', role: 'brand' })} style={{ flex: 1, justifyContent: 'center' }}>View Profile <ExternalLink size={16} /></button><button type="button" className="btn-secondary" onClick={() => onMessageBrand && onMessageBrand({ ...brand, name: brand.company_name || 'Brand', role: 'brand' })} style={{ width: '46px', justifyContent: 'center' }} aria-label={`Message ${brand.company_name || 'brand'}`} title={`Message ${brand.company_name || 'brand'}`}><MessageCircle size={16} /></button></div></div>)}</div>
+      ) : filteredCreators.length === 0 ? (
         <div className="glass-panel" style={{ textAlign: 'center', padding: '60px 20px' }}>
           <UserCheck size={48} color="var(--text-dim)" style={{ marginBottom: '12px' }} />
           <h3 style={{ fontSize: '1.2rem', fontWeight: 600 }}>No creators found</h3>
@@ -123,7 +145,7 @@ export default function CreatorDirectory({ onSelectCreator }) {
           gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
           gap: '24px'
         }}>
-          {creators.map((creator) => (
+          {filteredCreators.map((creator) => (
             <div key={creator.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 {/* Profile Header */}
@@ -232,15 +254,26 @@ export default function CreatorDirectory({ onSelectCreator }) {
                 </div>
               </div>
 
-              {/* Action Button */}
-              <button
-                onClick={() => onSelectCreator(creator)}
-                className="btn-secondary"
-                style={{ width: '100%', justifyContent: 'center' }}
-              >
-                View Full Profile
-                <ExternalLink size={16} />
-              </button>
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button
+                  onClick={() => onSelectCreator(creator)}
+                  className="btn-secondary"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                >
+                  View Full Profile
+                  <ExternalLink size={16} />
+                </button>
+                <button
+                  onClick={() => onMessageCreator && onMessageCreator({ ...creator, role: 'creator' })}
+                  className="btn-secondary"
+                  style={{ width: '46px', minWidth: '46px', justifyContent: 'center', padding: '0 10px' }}
+                  aria-label={`Message ${creator.name}`}
+                  title={`Message ${creator.name}`}
+                >
+                  <Video size={16} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

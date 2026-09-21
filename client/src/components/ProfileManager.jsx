@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AtSign, BarChart3, Building2, Camera, Check, Globe, Image, Mail, MessageCircle, Save, ShieldCheck, Tag, User, Users } from 'lucide-react';
+import { ArrowLeft, AtSign, BarChart3, Building2, Camera, Check, Globe, Image, Mail, MessageCircle, Save, ShieldCheck, Tag, User, Users } from 'lucide-react';
 import { api } from '../services/api';
 
 const creatorDefaults = { bio: '', niche: 'Tech & AI', profile_image: '', instagram: '', youtube: '', tiktok: '' };
@@ -23,7 +23,7 @@ function readSquareImage(file, onReady) {
   reader.readAsDataURL(file);
 }
 
-export default function ProfileManager({ currentUser, onProfileUpdated }) {
+export default function ProfileManager({ currentUser, onProfileUpdated, onBack }) {
   const [profile, setProfile] = useState(currentUser?.role === 'brand' ? brandDefaults : creatorDefaults);
   const [displayName, setDisplayName] = useState(currentUser?.name || '');
   const [email, setEmail] = useState(currentUser?.email || '');
@@ -33,6 +33,7 @@ export default function ProfileManager({ currentUser, onProfileUpdated }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [payoutAccountNumber, setPayoutAccountNumber] = useState('');
 
   const isBrand = currentUser?.role === 'brand';
   const roleLabel = isBrand ? 'Brand account' : 'Creator account';
@@ -84,7 +85,7 @@ export default function ProfileManager({ currentUser, onProfileUpdated }) {
       const account = await api.updateCurrentUser({ name: displayName });
       const result = isBrand
         ? await api.updateBrandProfile(profile)
-        : await api.updateCreatorProfile(profile);
+        : await api.updateCreatorProfile({ ...profile, payout_account_number: payoutAccountNumber || undefined });
       setMessage('Profile changes saved. Your public profile is up to date.');
       if (onProfileUpdated) onProfileUpdated(account.user);
       if (result) setProfile(result.brand || result.creator || profile);
@@ -103,10 +104,13 @@ export default function ProfileManager({ currentUser, onProfileUpdated }) {
     <section className="content-section profile-section">
       <div className="profile-workspace">
         <div className="profile-heading">
-          <div>
+          <div className="profile-heading-row">
+            {onBack && <button type="button" className="icon-back-button" onClick={onBack} aria-label="Back" title="Back"><ArrowLeft size={19} /></button>}
+            <div>
             <p className="profile-kicker">Account workspace</p>
             <h2>Manage your profile</h2>
             <p className="profile-intro">Keep your identity and public {isBrand ? 'brand presence' : 'creator presence'} ready for the next collaboration.</p>
+            </div>
           </div>
           <div className="profile-status"><ShieldCheck size={16} /> {roleLabel}</div>
         </div>
@@ -164,6 +168,19 @@ export default function ProfileManager({ currentUser, onProfileUpdated }) {
                   <label className="profile-field"><span>Creator bio</span><textarea className="input-field" rows={5} value={profile.bio || ''} onChange={(event) => updateProfile('bio', event.target.value)} placeholder="Share your focus, audience, and collaboration interests." /></label>
                   <div className="profile-photo-row"><div className="profile-avatar">{profile.profile_image ? <img src={profile.profile_image} alt="Profile preview" /> : <User size={26} />}</div><label className="btn-secondary profile-upload"><Camera size={16} />Choose photo<input type="file" accept="image/*" onChange={(event) => handleImage(event, 'profile_image')} /></label></div>
                   <div className="profile-social-grid"><label className="profile-field"><span>Instagram</span><div className="profile-input-wrap"><AtSign size={16} /><input className="input-field" value={profile.instagram || ''} onChange={(event) => updateProfile('instagram', event.target.value)} placeholder="@yourname" /></div></label><label className="profile-field"><span>YouTube</span><div className="profile-input-wrap"><Image size={16} /><input className="input-field" value={profile.youtube || ''} onChange={(event) => updateProfile('youtube', event.target.value)} placeholder="Channel name" /></div></label><label className="profile-field"><span>TikTok</span><div className="profile-input-wrap"><AtSign size={16} /><input className="input-field" value={profile.tiktok || ''} onChange={(event) => updateProfile('tiktok', event.target.value)} placeholder="@yourname" /></div></label></div>
+                  <div className="profile-card payout-details-card">
+                    <div className="profile-card-heading"><ShieldCheck size={18} /><div><h3>Bank & payment details</h3><p>Used only for creator payouts. Your full bank account number is encrypted and never shown publicly.</p></div></div>
+                    <div className="affiliate-form-grid">
+                      <label className="profile-field"><span>Payout method</span><select className="input-field" value={profile.payout_method || ''} onChange={(event) => updateProfile('payout_method', event.target.value)}><option value="">Choose a method</option><option value="bank_transfer">Bank transfer</option><option value="upi">UPI</option><option value="paypal">PayPal</option></select></label>
+                      <label className="profile-field"><span>Account holder name</span><input className="input-field" value={profile.payout_account_name || ''} onChange={(event) => updateProfile('payout_account_name', event.target.value)} placeholder="Name on payout account" /></label>
+                      <label className="profile-field"><span>Bank name</span><input className="input-field" value={profile.payout_bank_name || ''} onChange={(event) => updateProfile('payout_bank_name', event.target.value)} placeholder="Your bank" /></label>
+                      <label className="profile-field"><span>Bank account number</span><input className="input-field" inputMode="numeric" value={payoutAccountNumber} onChange={(event) => setPayoutAccountNumber(event.target.value.replace(/\D/g, ''))} placeholder={profile.payout_account_last4 ? `Saved account ending ${profile.payout_account_last4}` : '6 to 34 digits'} /></label>
+                      <label className="profile-field"><span>IFSC code</span><input className="input-field" value={profile.payout_ifsc || ''} onChange={(event) => updateProfile('payout_ifsc', event.target.value.toUpperCase())} placeholder="ABCD0123456" /></label>
+                      <label className="profile-field"><span>UPI ID</span><input className="input-field" value={profile.payout_upi_id || ''} onChange={(event) => updateProfile('payout_upi_id', event.target.value)} placeholder="name@bank" /></label>
+                      <label className="profile-field"><span>PayPal email</span><input className="input-field" type="email" value={profile.payout_email || ''} onChange={(event) => updateProfile('payout_email', event.target.value)} placeholder="payout@example.com" /></label>
+                    </div>
+                    <p className="payout-security-note">Never enter card numbers, CVV, UPI PINs, passwords, or one-time codes.</p>
+                  </div>
                 </>
               )}
             </div>

@@ -1,56 +1,70 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Briefcase, FileText, Handshake, MessageSquare, Bell,
-  Plus, RefreshCw, ExternalLink, Users
+  ArrowLeft, Bell, Briefcase, CreditCard, Handshake, MessageSquare, RefreshCw,
+  Search, Send, Users
 } from 'lucide-react';
 import { api } from '../services/api';
+import PaymentsOverview from './PaymentsOverview';
 
-export default function MarketplaceOverview({ user, initialSubTab = 'campaigns' }) {
+export default function MarketplaceOverview({ user, initialSubTab = 'brands', onMessageProfile, onOpenProfile, messageTarget, onOpenPayment, onRefund, refreshToken }) {
   const [activeSubTab, setActiveSubTab] = useState(initialSubTab);
-  
-  // Data states
-  const [campaigns, setCampaigns] = useState([]);
-  const [applications, setApplications] = useState([]);
-  const [collaborations, setCollaborations] = useState([]);
-  const [messages, setMessages] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [creators, setCreators] = useState([]);
-  const [loading, setLoading] = useState(false);
 
-  // Form states
-  const [newCampaign, setNewCampaign] = useState({ title: '', description: '', budget: '', deadline: '' });
-  const [applyMsg, setApplyMsg] = useState('');
-  const [selectedCampaignId, setSelectedCampaignId] = useState(null);
+  // Data states
+  const [brands, setBrands] = useState([]);
+  const [collaborations, setCollaborations] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [creators, setCreators] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [conversationSearch, setConversationSearch] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const loadActiveTabData = async () => {
     setLoading(true);
     try {
-      if (activeSubTab === 'campaigns') {
-        const res = await api.getCampaigns();
-        setCampaigns(res.campaigns || []);
-      } else if (activeSubTab === 'applications') {
-        if (user) {
-          const res = await api.getMyApplications();
-          setApplications(res.applications || []);
-        }
+      if (activeSubTab === 'brands') {
+        const res = await api.getBrands();
+        setBrands(res.brands || []);
+      } else if (activeSubTab === 'creators') {
+        const res = await api.getCreators();
+        setCreators(res.creators || []);
       } else if (activeSubTab === 'collaborations') {
         if (user) {
-          const res = await api.getCollaborations();
+          const [res, paymentRes] = await Promise.all([api.getCollaborations(), api.getPayments()]);
           setCollaborations(res.collaborations || []);
+          setPayments(paymentRes.payments || []);
+        }
+      } else if (activeSubTab === 'payments') {
+        if (user) {
+          const res = await api.getPayments();
+          setPayments(res.payments || []);
         }
       } else if (activeSubTab === 'messages') {
         if (user) {
           const res = await api.getConversations();
-          setMessages(res.conversations || []);
+          const list = res.conversations || [];
+          setConversations(list);
+          if (!selectedConversation && !messageTarget && list.length > 0) {
+            const first = list[0];
+            const next = {
+              ...first,
+              id: first.contact_id,
+              user_id: first.contact_id,
+              name: first.contact_name,
+              role: first.contact_role,
+              contact_id: first.contact_id,
+              contact_name: first.contact_name,
+              contact_role: first.contact_role
+            };
+            setSelectedConversation(next);
+          }
         }
-      } else if (activeSubTab === 'notifications') {
-        if (user) {
-          const res = await api.getNotifications();
-          setNotifications(res.notifications || []);
-        }
-      } else if (activeSubTab === 'creators') {
-        const res = await api.getCreators();
-        setCreators(res.creators || []);
+      } else if (activeSubTab === 'notifications' && user) {
+        const res = await api.getNotifications();
+        setNotifications(res.notifications || []);
       }
     } catch (err) {
       console.error(`Error loading ${activeSubTab}:`, err);
@@ -64,39 +78,65 @@ export default function MarketplaceOverview({ user, initialSubTab = 'campaigns' 
   }, [initialSubTab]);
 
   useEffect(() => {
+    if (initialSubTab !== 'messages' || !messageTarget) return;
+    setSelectedConversation({
+      ...messageTarget,
+      id: messageTarget.user_id || messageTarget.id,
+      user_id: messageTarget.user_id || messageTarget.id,
+      name: messageTarget.name || messageTarget.company_name || 'Profile',
+      contact_name: messageTarget.name || messageTarget.company_name || 'Profile',
+      contact_role: messageTarget.role || (messageTarget.company_name ? 'brand' : 'creator'),
+      contact_id: messageTarget.user_id || messageTarget.id
+    });
+  }, [initialSubTab, messageTarget]);
+
+  useEffect(() => {
     loadActiveTabData();
-  }, [activeSubTab, user]);
+  }, [activeSubTab, user, refreshToken]);
 
-  const handleCreateCampaign = async (e) => {
-    e.preventDefault();
+  const loadChatHistory = async (contact) => {
+    if (!contact || !user) return;
+    const contactId = contact.user_id || contact.contact_id || contact.id;
     try {
-      await api.createCampaign(newCampaign);
-      setNewCampaign({ title: '', description: '', budget: '', deadline: '' });
-      loadActiveTabData();
+      const res = await api.getChatHistory(contactId);
+      setChatMessages(res.messages || []);
     } catch (err) {
-      alert(err.message || 'Failed to create campaign');
+      console.error('Error loading chat history:', err);
+      setChatMessages([]);
     }
   };
 
-  const handleApply = async (campaignId) => {
+  const handleSendMessage = async () => {
+    if (!selectedConversation || !user || !newMessage.trim()) return;
+    const receiverId = selectedConversation.user_id || selectedConversation.contact_id || selectedConversation.id;
     try {
-      await api.applyToCampaign({ campaign_id: campaignId, message: applyMsg });
-      setSelectedCampaignId(null);
-      setApplyMsg('');
-      alert('Application submitted successfully!');
+      await api.sendMessage({ receiver_id: receiverId, message: newMessage.trim() });
+      setNewMessage('');
+      await loadChatHistory(selectedConversation);
+      const res = await api.getConversations();
+      setConversations(res.conversations || []);
     } catch (err) {
-      alert(err.message || 'Failed to submit application');
+      alert(err.message || 'Failed to send message');
     }
   };
+
+  useEffect(() => {
+    if (activeSubTab === 'messages' && selectedConversation) {
+      loadChatHistory(selectedConversation);
+    }
+  }, [activeSubTab, selectedConversation, user]);
 
   const modules = [
-    { id: 'campaigns', title: 'Brand Collaborations', table: 'campaigns', icon: Briefcase, color: '#ffffff' },
-    { id: 'creators', title: 'Creators', table: 'creator_profiles', icon: Users, color: '#ffffff' },
-    { id: 'applications', title: 'Applications', table: 'campaign_applications', icon: FileText, color: '#ffffff' },
-    { id: 'collaborations', title: 'Collaborations', table: 'collaborations', icon: Handshake, color: '#ffffff' },
-    { id: 'messages', title: 'Messages', table: 'messages', icon: MessageSquare, color: '#ffffff' },
-    { id: 'notifications', title: 'Notifications', table: 'notifications', icon: Bell, color: '#ffffff' }
+    { id: 'brands', title: 'Brands', icon: Briefcase, color: '#ffffff' },
+    { id: 'creators', title: 'Creators', icon: Users, color: '#ffffff' },
+    { id: 'collaborations', title: 'Collaborations', icon: Handshake, color: '#ffffff' }
   ];
+  if (user) modules.push({ id: 'payments', title: user.role === 'brand' ? 'Payments' : 'Earnings', icon: CreditCard, color: '#ffffff' });
+
+  const selectedContactName = selectedConversation?.contact_name || selectedConversation?.name || 'Conversation';
+  const visibleConversations = conversations.filter((conversation) => (
+    conversation.contact_name || ''
+  ).toLowerCase().includes(conversationSearch.toLowerCase()));
 
   return (
     <section className="content-section marketplace-section" style={{ maxWidth: '1280px', margin: '0 auto', padding: '20px 24px 60px' }}>
@@ -156,99 +196,46 @@ export default function MarketplaceOverview({ user, initialSubTab = 'campaigns' 
         })}
       </div>
 
-      {/* Main Content Area per Tab */}
-      {activeSubTab === 'campaigns' && (
-        <div>
-          {/* Create Campaign for Brands */}
-          {user?.role === 'brand' && (
-            <div className="glass-panel" style={{ padding: '24px', marginBottom: '32px' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Plus size={20} color="#6366f1" />
-                Launch New Brand Campaign
-              </h3>
-              <form onSubmit={handleCreateCampaign} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                <input
-                  type="text"
-                  required
-                  className="input-field"
-                  placeholder="Campaign Title (e.g. Summer Tech Launch)"
-                  value={newCampaign.title}
-                  onChange={(e) => setNewCampaign({ ...newCampaign, title: e.target.value })}
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input-field"
-                  placeholder="Budget ($ e.g. 1500.00)"
-                  value={newCampaign.budget}
-                  onChange={(e) => setNewCampaign({ ...newCampaign, budget: e.target.value })}
-                />
-                <input
-                  type="date"
-                  className="input-field"
-                  value={newCampaign.deadline}
-                  onChange={(e) => setNewCampaign({ ...newCampaign, deadline: e.target.value })}
-                />
-                <textarea
-                  className="input-field"
-                  style={{ gridColumn: '1 / -1' }}
-                  placeholder="Campaign Description & Creator Requirements..."
-                  value={newCampaign.description}
-                  onChange={(e) => setNewCampaign({ ...newCampaign, description: e.target.value })}
-                />
-                <button type="submit" className="btn-primary" style={{ gridColumn: '1 / -1', width: 'fit-content' }}>
-                  Post Campaign
-                </button>
-              </form>
+      {activeSubTab === 'brands' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+          {brands.length === 0 ? (
+            <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', gridColumn: '1 / -1' }}>
+              <Briefcase size={36} color="var(--text-dim)" style={{ marginBottom: '12px' }} />
+              <h4>No brands registered yet</h4>
             </div>
-          )}
-
-          {/* List Open Campaigns */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-            {campaigns.length === 0 ? (
-              <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', gridColumn: '1 / -1' }}>
-                <Briefcase size={36} color="var(--text-dim)" style={{ marginBottom: '12px' }} />
-                <h4>No campaigns posted yet</h4>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-                  Sign in as a Brand to post the first campaign offer.
-                </p>
-              </div>
-            ) : (
-              campaigns.map((c) => (
-                <div key={c.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          ) : (
+            brands.map((brand) => (
+              <div key={brand.id} className="glass-card" onClick={() => onOpenProfile && onOpenProfile({ ...brand, name: brand.company_name || 'Brand', role: 'brand' })} style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '18px' }}>
+                  <img src={brand.logo || `https://api.dicebear.com/7.x/initials/svg?seed=${brand.company_name || 'Brand'}`} alt={brand.company_name || 'Brand'} style={{ width: '56px', height: '56px', borderRadius: '16px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }} />
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                      <span className="badge-creator" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', borderColor: 'rgba(99,102,241,0.3)' }}>
-                        {c.status || 'open'}
-                      </span>
-                      <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#34d399', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        ${parseFloat(c.budget || 0).toLocaleString()}
-                      </span>
-                    </div>
-
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '6px' }}>{c.title}</h3>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-                      By {c.company_name || 'Verified Brand'}
-                    </div>
-
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '16px' }}>
-                      {c.description || 'No detailed description provided.'}
-                    </p>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{brand.company_name || 'Brand'}</h3>
+                    <span className="badge-brand">Brand</span>
                   </div>
-
-                  {user?.role === 'creator' && (
-                    <button onClick={() => setSelectedCampaignId(c.id)} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                      Apply Now
-                    </button>
-                  )}
                 </div>
-              ))
-            )}
-          </div>
+                <p style={{ color: 'var(--text-muted)', lineHeight: '1.6' }}>{brand.description || 'No brand description yet.'}</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginTop: '18px' }}>
+                  {brand.website && (
+                    <a href={brand.website} onClick={(event) => event.stopPropagation()} target="_blank" rel="noreferrer" style={{ color: '#8b5cf6' }}>
+                      Visit Website
+                    </a>
+                  )}
+                  <button
+                    className="btn-secondary"
+                    onClick={(event) => { event.stopPropagation(); onMessageProfile && onMessageProfile({ ...brand, name: brand.company_name || 'Brand', role: 'brand' }); }}
+                    style={{ marginLeft: 'auto', padding: '8px 12px' }}
+                    aria-label={`Message ${brand.company_name || 'brand'}`}
+                    title={`Message ${brand.company_name || 'brand'}`}
+                  >
+                    <MessageSquare size={16} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
 
-      {/* Creator Directory Tab */}
       {activeSubTab === 'creators' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
           {creators.length === 0 ? (
@@ -258,113 +245,225 @@ export default function MarketplaceOverview({ user, initialSubTab = 'campaigns' 
             </div>
           ) : (
             creators.map((creator) => (
-              <div key={creator.id} className="glass-card marketplace-creator-card" style={{ padding: '24px' }}>
+              <div key={creator.id} className="glass-card marketplace-creator-card" onClick={() => onOpenProfile && onOpenProfile({ ...creator, role: 'creator' })} style={{ padding: '24px' }}>
                 <div className="marketplace-creator-head"><img src={creator.profile_image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${creator.name}`} alt={creator.name} /><div><h3>{creator.name}</h3><span className="badge-niche">{creator.niche || 'Creator'}</span></div></div>
                 <p>{creator.bio || 'No bio specified yet.'}</p>
+                {creator.instagram && <p style={{ marginTop: '10px', color: '#f472b6' }}>@{creator.instagram.replace('@', '')}</p>}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px' }}>
+                  <button
+                    className="btn-secondary"
+                    onClick={(event) => { event.stopPropagation(); onMessageProfile && onMessageProfile({ ...creator, role: 'creator' }); }}
+                    style={{ padding: '8px 12px' }}
+                    aria-label={`Message ${creator.name}`}
+                    title={`Message ${creator.name}`}
+                  >
+                    <MessageSquare size={16} />
+                  </button>
+                </div>
               </div>
             ))
           )}
         </div>
       )}
 
-      {/* Other Tabs */}
-      {['applications', 'collaborations', 'messages', 'notifications'].includes(activeSubTab) && (
+      {activeSubTab === 'collaborations' && (
         <div className="glass-panel" style={{ padding: '32px' }}>
           {!user ? (
             <div style={{ textAlign: 'center', padding: '30px' }}>
-              <h4 style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Sign in to access {modules.find(m => m.id === activeSubTab)?.title}</h4>
+              <h4 style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Sign in to access collaborations</h4>
             </div>
           ) : (
             <div>
-              <h3 style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: '16px' }}>
-                {modules.find(m => m.id === activeSubTab)?.title}
-              </h3>
-
-              {activeSubTab === 'applications' && (
-                <div>
-                  {applications.length === 0 ? (
-                    <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>No applications submitted yet.</div>
-                  ) : (
-                    applications.map((app) => (
-                      <div key={app.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '10px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{app.campaign_title || `Campaign #${app.campaign_id}`}</div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{app.message}</div>
-                        </div>
-                        <span className="badge-niche">{app.status}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {activeSubTab === 'collaborations' && (
-                <div>
-                  {collaborations.length === 0 ? (
-                    <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>No active collaborations yet.</div>
-                  ) : (
-                    collaborations.map((col) => (
-                      <div key={col.id} className="activity-row collaboration-row">
-                        <div style={{ fontWeight: 600 }}>{col.campaign_title || `Collaboration #${col.id}`}</div>
-                        <div style={{ fontSize: '0.85rem', color: '#34d399' }}>Agreed Amount: ${col.agreed_amount || '0.00'}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {activeSubTab === 'notifications' && (
-                <div className="activity-feed">
-                  {notifications.length === 0 ? (
-                    <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>No notifications found.</div>
-                  ) : (
-                    notifications.map((n) => (
-                      <div key={n.id} className={n.is_read ? 'activity-row' : 'activity-row is-unread'}>
-                        <div className="activity-avatar"><Bell size={16} /></div>
-                        <div className="activity-copy"><div>{n.title}</div><p>{n.message}</p></div>
-                        {!n.is_read && <span className="activity-dot" />}
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {activeSubTab === 'messages' && (
-                <div className="activity-feed">
-                  {messages.length === 0 ? (
-                    <div className="activity-empty">No conversations yet. Your messages will appear here.</div>
-                  ) : messages.map((conversation) => (
-                    <div key={conversation.contact_id} className="activity-row message-row">
-                      <div className="activity-avatar"><MessageSquare size={16} /></div>
-                      <div className="activity-copy"><div>{conversation.contact_name}</div><p>{conversation.contact_role === 'brand' ? 'Brand' : 'Creator'} · Open conversation</p></div>
-                      <ExternalLink size={15} className="activity-arrow" />
-                    </div>
-                  ))}
-                </div>
+              {collaborations.length === 0 ? (
+                <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '20px' }}>No active collaborations yet.</div>
+              ) : (
+                collaborations.map((col) => (
+                  <div key={col.id} className="activity-row collaboration-row" style={{ marginBottom: '12px' }}>
+                    <div style={{ fontWeight: 600 }}>{col.campaign_title || `Collaboration #${col.id}`}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#34d399' }}>Agreed Amount: ${col.agreed_amount || '0.00'}</div>
+                    {(() => {
+                      const payment = payments.find((item) => Number(item.collaboration_id) === Number(col.id));
+                      return <div className="collaboration-payment-inline"><span>Payment: {payment ? `${payment.currency || 'INR'} ${payment.amount}` : `${col.currency || 'INR'} ${col.agreed_amount || '0.00'}`}</span><span className={`payment-status payment-status-${String(payment?.status || 'PENDING').toLowerCase()}`}>{payment?.status || 'PENDING'}</span>{user.role === 'brand' && (!payment || payment.status === 'PENDING') && <button type="button" className="btn-primary" onClick={() => onOpenPayment && onOpenPayment(payment || col)}>Pay Now</button>}</div>;
+                    })()}
+                  </div>
+                ))
               )}
             </div>
           )}
         </div>
       )}
 
-      {/* Application Modal */}
-      {selectedCampaignId && (
-        <div className="modal-overlay" onClick={() => setSelectedCampaignId(null)}>
-          <div className="glass-panel" style={{ maxWidth: '480px', width: '100%', padding: '28px' }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: '12px' }}>Apply to Campaign</h3>
-            <textarea
-              className="input-field"
-              rows={4}
-              placeholder="Why are you a great fit for this campaign?..."
-              value={applyMsg}
-              onChange={(e) => setApplyMsg(e.target.value)}
-              style={{ marginBottom: '16px' }}
-            />
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setSelectedCampaignId(null)} className="btn-secondary">Cancel</button>
-              <button onClick={() => handleApply(selectedCampaignId)} className="btn-primary">Submit Application</button>
+      {activeSubTab === 'payments' && <PaymentsOverview user={user} payments={payments} onOpenPayment={onOpenPayment} onRefund={onRefund} />}
+
+      {activeSubTab === 'messages' && (
+        <div className="glass-panel" style={{ overflow: 'hidden', padding: 0 }}>
+          {!user ? (
+            <div style={{ textAlign: 'center', padding: '30px' }}>
+              <h4 style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Sign in to access messages</h4>
             </div>
+          ) : (
+            <div className="instagram-dm" style={{ display: 'grid', gridTemplateColumns: '320px minmax(0, 1fr)', minHeight: '640px' }}>
+              <div className="instagram-dm-sidebar" style={{ borderRight: '1px solid rgba(255,255,255,0.08)', background: 'rgba(12,15,22,0.8)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 18px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <Search size={16} color="var(--text-muted)" />
+                  <input
+                    className="input-field"
+                    value={conversationSearch}
+                    onChange={(event) => setConversationSearch(event.target.value)}
+                    placeholder="Search"
+                    aria-label="Search conversations"
+                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)', padding: '10px 12px' }}
+                  />
+                </div>
+
+                <div style={{ overflowY: 'auto', maxHeight: '560px' }}>
+                  {visibleConversations.length === 0 ? (
+                    <div style={{ color: 'var(--text-dim)', padding: '24px 18px' }}>No conversations yet.</div>
+                  ) : (
+                    visibleConversations.map((conversation) => {
+                      const active = selectedConversation && (selectedConversation.contact_id || selectedConversation.id) === (conversation.contact_id || conversation.id);
+                      return (
+                        <button
+                          key={conversation.contact_id || conversation.id}
+                          type="button"
+                          onClick={() => {
+                            const item = { ...conversation, id: conversation.contact_id, user_id: conversation.contact_id, name: conversation.contact_name, role: conversation.contact_role };
+                            setSelectedConversation(item);
+                            loadChatHistory(item);
+                          }}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '14px 18px',
+                            border: 0,
+                            cursor: 'pointer',
+                            background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
+                            color: '#fff',
+                            textAlign: 'left',
+                            borderBottom: '1px solid rgba(255,255,255,0.04)'
+                          }}
+                        >
+                          <img
+                            src={conversation.profile_image || conversation.logo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${conversation.contact_name || 'user'}`}
+                            alt=""
+                            style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover', background: '#252525' }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conversation.contact_name}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conversation.contact_role === 'brand' ? 'Brand' : 'Creator'}</div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="instagram-dm-thread" style={{ display: 'flex', flexDirection: 'column', background: 'rgba(8,10,16,0.7)' }}>
+                {selectedConversation ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedConversation(null)}
+                          style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                          aria-label="Back to conversations"
+                        >
+                          <ArrowLeft size={16} />
+                        </button>
+                        <img
+                          src={selectedConversation.profile_image || selectedConversation.logo || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedContactName}`}
+                          alt=""
+                          style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', background: '#252525' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{selectedContactName}</div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{selectedConversation.contact_role === 'brand' ? 'Brand' : 'Creator'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(5,7,12,0.3)' }}>
+                      {chatMessages.length === 0 ? (
+                        <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '24px' }}>No messages yet. Start the conversation.</div>
+                      ) : (
+                        chatMessages.map((chat) => {
+                          const mine = Number(chat.sender_id) === Number(user.id);
+                          return (
+                            <div key={chat.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+                              <div
+                                style={{
+                                  maxWidth: '72%',
+                                  padding: '12px 14px',
+                                  borderRadius: mine ? '18px 18px 0 18px' : '18px 18px 18px 0',
+                                  background: mine ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'rgba(255,255,255,0.06)',
+                                  color: '#fff',
+                                  lineHeight: 1.5,
+                                  boxShadow: mine ? '0 10px 24px rgba(99,102,241,0.28)' : 'none'
+                                }}
+                              >
+                                {chat.message}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(12,15,22,0.8)' }}>
+                      <input
+                        className="input-field"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="Message..."
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+                        }}
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px' }}
+                      />
+                      <button type="button" className="btn-primary" onClick={handleSendMessage} style={{ padding: '10px 16px' }}>
+                        <Send size={16} />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-muted)' }}>
+                    Select a conversation to start chatting
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeSubTab === 'notifications' && (
+        <div className="glass-panel" style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
+            <Bell size={19} />
+            <h3 style={{ fontSize: '1.2rem' }}>Notifications</h3>
           </div>
+          {notifications.length === 0 ? (
+            <div className="activity-empty">You are all caught up.</div>
+          ) : (
+            <div className="activity-feed">
+              {notifications.map((notification) => (
+                <div key={notification.id} className={`activity-row${notification.is_read ? '' : ' is-unread'}`}>
+                  <div className="activity-avatar"><Bell size={16} /></div>
+                  <div className="activity-copy">
+                    <div>{notification.title}</div>
+                    <p>{notification.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

@@ -52,6 +52,16 @@ export const api = {
     return data;
   },
 
+  deleteAccount: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to delete account');
+    return data;
+  },
+
   // Creator APIs
   getCreators: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
@@ -102,6 +112,98 @@ export const api = {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to update brand profile');
+    return data;
+  },
+
+  // Affiliate APIs
+  getAffiliateProducts: async () => {
+    const response = await fetch(`${API_BASE_URL}/affiliates`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch affiliate products');
+    return data;
+  },
+
+  getBrandAffiliateProducts: async () => {
+    const response = await fetch(`${API_BASE_URL}/affiliates/my-products`, {
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch your affiliate products');
+    return data;
+  },
+
+  createAffiliateProduct: async (productData) => {
+    const response = await fetch(`${API_BASE_URL}/affiliates`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(productData)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to create affiliate product');
+    return data;
+  },
+
+  updateAffiliateProduct: async (productId, productData) => {
+    const response = await fetch(`${API_BASE_URL}/affiliates/${productId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(productData)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to update affiliate product');
+    return data;
+  },
+
+  deleteAffiliateProduct: async (productId) => {
+    const response = await fetch(`${API_BASE_URL}/affiliates/${productId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to delete affiliate product');
+    return data;
+  },
+
+  getMyAffiliateLinks: async () => {
+    const response = await fetch(`${API_BASE_URL}/affiliates/my-links`, {
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch saved affiliate links');
+    return data;
+  },
+
+  saveAffiliateLink: async (productId) => {
+    const response = await fetch(`${API_BASE_URL}/affiliates/${productId}/save`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to save affiliate link');
+    return data;
+  },
+
+  unsaveAffiliateLink: async (productId) => {
+    const response = await fetch(`${API_BASE_URL}/affiliates/${productId}/save`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to remove affiliate link');
+    return data;
+  },
+
+  getPublicCreatorAffiliateLinks: async (creatorId) => {
+    const response = await fetch(`${API_BASE_URL}/affiliates/creators/${creatorId}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch creator affiliate links');
+    return data;
+  },
+
+  getPublicBrandAffiliateProducts: async (brandId) => {
+    const response = await fetch(`${API_BASE_URL}/affiliates/brands/${brandId}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch brand affiliate products');
     return data;
   },
 
@@ -222,6 +324,45 @@ export const api = {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to fetch payments');
+    return data;
+  },
+
+  getPayment: async (paymentId) => {
+    const response = await fetch(`${API_BASE_URL}/payments/${paymentId}`, { headers: getAuthHeaders() });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch payment');
+    return data;
+  },
+
+  createPaymentOrder: async (collaborationId) => {
+    const response = await fetch(`${API_BASE_URL}/payments/create`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ collaboration_id: collaborationId })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to create payment order');
+    return data;
+  },
+
+  verifyPayment: async (verification) => {
+    const response = await fetch(`${API_BASE_URL}/payments/verify`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(verification)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Payment verification failed');
+    return data;
+  },
+
+  refundPayment: async (paymentId) => {
+    const response = await fetch(`${API_BASE_URL}/payments/${paymentId}/refund`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Refund failed');
     return data;
   },
 

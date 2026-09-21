@@ -7,7 +7,7 @@ async function getCollaborations(req, res) {
     const userRole = req.user.role;
 
     let query = `
-      SELECT col.id, col.campaign_id, col.creator_id, col.start_date, col.end_date, col.status, col.agreed_amount, col.created_at,
+      SELECT col.id, col.campaign_id, col.creator_id, col.start_date, col.end_date, col.status, col.agreed_amount, col.currency, col.created_at,
              c.title AS campaign_title, c.description AS campaign_description,
              bp.company_name, bp.logo,
              u.name AS creator_name, u.email AS creator_email,
@@ -50,6 +50,23 @@ async function updateCollaboration(req, res) {
   try {
     const { id } = req.params;
     const { start_date, end_date, status, agreed_amount } = req.body;
+
+    if (agreed_amount !== undefined) {
+      if (req.user.role !== 'brand') return res.status(403).json({ error: 'Only the owning brand can change the agreed payment amount.' });
+      const [ownership] = await pool.execute(
+        `SELECT COALESCE(bp.user_id, c.brand_id) AS brand_user_id
+         FROM collaborations col
+         JOIN campaigns c ON col.campaign_id = c.id
+         LEFT JOIN brand_profiles bp ON c.brand_id = bp.id OR c.brand_id = bp.user_id
+         WHERE col.id = ?`,
+        [id]
+      );
+      if (!ownership.length || Number(ownership[0].brand_user_id) !== Number(req.user.id)) return res.status(403).json({ error: 'You do not own this collaboration.' });
+      const parsedAmount = Number(agreed_amount);
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ error: 'Agreed amount must be a positive number.' });
+      const [paid] = await pool.execute(`SELECT id FROM payments WHERE collaboration_id = ? AND status IN ('PAID', 'PROCESSING', 'RELEASED') LIMIT 1`, [id]);
+      if (paid.length) return res.status(400).json({ error: 'The amount cannot change after payment has started.' });
+    }
 
     await pool.execute(
       `UPDATE collaborations
